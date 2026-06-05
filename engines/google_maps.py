@@ -2,10 +2,6 @@ import re
 import time
 import urllib.parse
 from playwright.sync_api import sync_playwright
-import os
-
-# 💡 إجبار المتصفح على العمل من المسار المحلي داخل المشروع لتفادي مسح الكاش من طرف Render
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "./playwright-browsers"
 
 class GoogleMapsEngine:
     def __init__(self, headless=True):
@@ -17,9 +13,7 @@ class GoogleMapsEngine:
         
         cleaned_phone = "".join(filter(str.isdigit, phone))
         
-        # Universal parsing constraints (accept lengths 9-15)
         if 9 <= len(cleaned_phone) <= 15:
-            # Reattach plus optionally or return standard cleaned
             if phone.startswith("+"):
                 return "+" + cleaned_phone
             elif len(cleaned_phone) == 10 and (country in ["United States", "Canada"] or cleaned_phone.startswith("1")):
@@ -31,7 +25,7 @@ class GoogleMapsEngine:
     def perform_search(self, query, max_leads=200, target_country="المغرب", status_callback=None, progress_callback=None):
         results = []
         with sync_playwright() as p:
-            # 💡 في بيئة الـ Docker الرسمية لـ Playwright، يتم استدعاء المحرك مباشرة من النظام لضمان الاستقرار التام
+            # 💡 تشغيل مباشر ونقي يعتمد على متصفح Docker الافتراضي بنسبة 100%
             browser = p.chromium.launch(headless=self.headless)
 
             context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
@@ -39,14 +33,12 @@ class GoogleMapsEngine:
             page.set_default_timeout(0)
             page.set_default_navigation_timeout(0)
 
-            # ── Fix Hardcoded/Malformed URL Connection Resets ───────────
+            # ── الإعدادات والبحث ──────────────────────────────────────────
             if status_callback: status_callback("Initializing map engines...")
             try:
-                # Secure the Page Navigation Invocation
                 page.goto("https://www.google.com/maps", timeout=60000, wait_until="domcontentloaded")
                 time.sleep(3)
                 
-                # Check for consent dialogs
                 try:
                     accept_buttons = page.locator('button:has-text("Accept all"), button:has-text("Tout accepter"), button:has-text("قَبول الكل")')
                     if accept_buttons.count() > 0:
@@ -55,7 +47,6 @@ class GoogleMapsEngine:
                 except Exception:
                     pass
                     
-                # Search dynamically instead of pushing a malformed URL payload
                 search_box = page.locator('input#searchboxinput')
                 if search_box.count() > 0:
                     search_box.first.fill(query)
@@ -64,7 +55,6 @@ class GoogleMapsEngine:
                 else:
                     raise Exception("Search box missing")
             except Exception:
-                # Fallback payload with safe query encoding
                 clean_query = query.replace("|", " ").replace("  ", " ").strip()
                 maps_url = f"https://www.google.com/maps/search/{urllib.parse.quote(clean_query)}"
                 try:
@@ -80,7 +70,6 @@ class GoogleMapsEngine:
             stagnant_scrolls = 0
 
             while True:
-                # ── Count unique results discovered so far ──────────────────
                 place_links = page.locator("a[href*='/maps/place/']").all()
                 unique_hrefs = set(a.get_attribute("href") or "" for a in place_links)
                 unique_hrefs.discard("")
@@ -94,11 +83,9 @@ class GoogleMapsEngine:
                     except Exception:
                         pass
 
-                # ── Stop when target is reached ─────────────────────────────
                 if current_unique >= max_leads:
                     break
 
-                # ── Stop when Google Maps signals no more results ───────────
                 try:
                     end_of_list = (
                         page.locator("text=You've reached the end of the list").is_visible() or
@@ -109,7 +96,6 @@ class GoogleMapsEngine:
                 except Exception:
                     pass
 
-                # ── Scroll the CORRECT container: div[role='feed'] ──────────
                 try:
                     feed = page.locator("div[role='feed']")
                     if feed.count() > 0:
@@ -119,7 +105,6 @@ class GoogleMapsEngine:
                             if (feed) { feed.scrollTop += 800; }
                         """)
                     else:
-                        # Fallback: scroll the last visible article into view
                         articles = page.locator('div[role="article"]')
                         if articles.count() > 0:
                             try:
@@ -130,11 +115,9 @@ class GoogleMapsEngine:
                 except Exception:
                     page.mouse.wheel(0, 1500)
 
-                # ── Human-like pause so Maps can render new cards ───────────
                 time.sleep(2)
                 scroll_count += 1
 
-                # ── Stagnation detection: raised to 20 for slow connections ─
                 if current_unique == previous_unique:
                     stagnant_scrolls += 1
                     if stagnant_scrolls >= 3:
@@ -191,14 +174,12 @@ class GoogleMapsEngine:
                     
                     if name_el.count() > 0:
                         try:
-                            # Mandatory global hydration
                             name_el.first.click(timeout=3000)
                             page.wait_for_timeout(3500)
                             
                             all_text = page.inner_text('body')
                             all_html = page.inner_html('body')
                             
-                            # Robust fallback lookup (Layout-Agnostic)
                             phone_els = page.locator("a[href^='tel:'], button[data-item-id^='phone:'], [data-element-id='phone']").all()
                             for el in phone_els:
                                 href_attr = el.get_attribute("href")
@@ -215,7 +196,6 @@ class GoogleMapsEngine:
                                         raw_phone = txt
                                         break
                                         
-                            # Moroccan Cafe Phone Normalizer (Regex & Spaces)
                             if raw_phone:
                                 pre_clean = raw_phone.replace("phone:tel:", "").replace("tel:", "").replace("phone:", "").replace(" ", "")
                                 raw_phone_digits = "".join(filter(str.isdigit, pre_clean))
@@ -224,7 +204,6 @@ class GoogleMapsEngine:
                                 else:
                                     raw_phone = raw_phone_digits
                                     
-                            # Revert maps menu pane back
                             back_btn = page.locator('button[aria-label*="Back"], button[aria-label*="رجوع"], button[aria-label*="Retour"], button[aria-label*="Volver"]')
                             if back_btn.count() > 0:
                                 back_btn.first.click(timeout=3000)
@@ -244,18 +223,15 @@ class GoogleMapsEngine:
                         all_html = card.inner_html()
 
                     if not raw_phone:
-                        # Regex fail safe
                         phone_match = re.search(r'(?:\+?1[\s\-\.]?\(?\d{3}\)?[\s\-\.]?\d{3}[\s\-\.]?\d{4})|(?:\+33|0)[\s\-\.]?[1-7](?:[\s\-\.]?\d{2}){4}|(?:\+34)?[\s\-\.]?[679](?:[\s\-\.]?\d{2}){4}|(?:\+212|0)[\s\-\.]?[5-9](?:[\s\-\.]?\d){8}|(?:\+?\d{1,3}[\s\-\.]?\(?\d{2,4}\)?[\s\-\.]?\d{3,4}[\s\-\.]?\d{3,4})', all_text)
                         if phone_match: raw_phone = re.sub(r'[\s\-\.\(\)]', '', phone_match.group(0))
 
                     wa_number = self.extract_whatsapp_mobile(raw_phone, target_country)
                     
-                    # WhatsApp global regex inside opened card elements
                     wa_link_match = re.search(r'(?:wa\.me/|api\.whatsapp\.com/send\?phone=|chat\.whatsapp\.com/|whatsapp://send\?phone=)(\+?\d+)', all_html)
                     if wa_link_match:
                         wa_number = wa_link_match.group(1)
                     
-                    # 💡 تأمين مخرجات الرابط النصية لتجنب AttributeError في تطبيقك
                     results.append({
                         "name": name,
                         "phone": raw_phone if raw_phone else "غير متوفر",
