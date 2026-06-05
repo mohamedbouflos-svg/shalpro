@@ -1,0 +1,6 @@
+{
+  "name": "AI Sales Copywriter",
+  "description": "Analyze business leads and generate highly personalized outreach email, WhatsApp, and follow-up copy tailored to their specific digital opportunities and pain points.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
