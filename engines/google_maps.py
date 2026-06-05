@@ -1,6 +1,7 @@
 import re
 import time
 import urllib.parse
+import csv  # 💡 تم إضافة الاستيراد هنا لحفظ البيانات فورا
 from playwright.sync_api import sync_playwright
 
 class GoogleMapsEngine:
@@ -148,6 +149,13 @@ class GoogleMapsEngine:
             
             total_found = len(place_cards)
             
+            # 💡 إنشاء أو تصفير ملف الحفظ المؤقت قبل بدء الدوران على النتائج
+            csv_file_path = "temp_leads.csv"
+            fieldnames = ["name", "phone", "whatsapp", "website", "maps_url"]
+            with open(csv_file_path, mode="w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+            
             for index, card in enumerate(place_cards):
                 if progress_callback:
                     try:
@@ -232,13 +240,21 @@ class GoogleMapsEngine:
                     if wa_link_match:
                         wa_number = wa_link_match.group(1)
                     
-                    results.append({
+                    lead_data = {
                         "name": name,
                         "phone": raw_phone if raw_phone else "غير متوفر",
                         "whatsapp": wa_number if wa_number else "غير متوفر",
                         "website": raw_website if raw_website else "",
                         "maps_url": maps_url if maps_url else ""
-                    })
+                    }
+                    
+                    results.append(lead_data)
+                    
+                    # 💡 حفظ فوري لكل ليد يتم استخراجه مباشرة في الملف لتفادي ضياعه عند الـ Timeout
+                    with open(csv_file_path, mode="a", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writerow(lead_data)
+
                 except Exception as e:
                     continue
             
