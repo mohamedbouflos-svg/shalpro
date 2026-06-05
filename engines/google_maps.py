@@ -31,15 +31,8 @@ class GoogleMapsEngine:
     def perform_search(self, query, max_leads=200, target_country="المغرب", status_callback=None, progress_callback=None):
         results = []
         with sync_playwright() as p:
-            # 💡 تحديد مسار الكروميوم بوضوح تام لمنع البحث في غياب ملفات الـ Cache الافتراضية
-            try:
-                browser = p.chromium.launch(headless=self.headless)
-            except Exception:
-                # Fallback آمن للبحث عن المسار الثابت يدوياً إذا لزم الأمر
-                try:
-                    browser = p.chromium.launch(headless=self.headless, executable_path="./playwright-browsers/chromium-1223/chrome-headless-shell-linux64/chrome-headless-shell")
-                except Exception:
-                    browser = p.chromium.launch(headless=self.headless)
+            # 💡 في بيئة الـ Docker الرسمية لـ Playwright، يتم استدعاء المحرك مباشرة من النظام لضمان الاستقرار التام
+            browser = p.chromium.launch(headless=self.headless)
 
             context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             page = context.new_page()
@@ -262,7 +255,7 @@ class GoogleMapsEngine:
                     if wa_link_match:
                         wa_number = wa_link_match.group(1)
                     
-                    # 💡 إذا كان الرابط فارغ نرجعه نص فارغ تفادياً لـ AttributeError في app.py
+                    # 💡 تأمين مخرجات الرابط النصية لتجنب AttributeError في تطبيقك
                     results.append({
                         "name": name,
                         "phone": raw_phone if raw_phone else "غير متوفر",
