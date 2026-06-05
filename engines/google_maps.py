@@ -2,6 +2,10 @@ import re
 import time
 import urllib.parse
 from playwright.sync_api import sync_playwright
+import os
+
+# 💡 إجبار المتصفح على العمل من المسار المحلي داخل المشروع لتفادي مسح الكاش من طرف Render
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "./playwright-browsers"
 
 class GoogleMapsEngine:
     def __init__(self, headless=True):
@@ -27,7 +31,16 @@ class GoogleMapsEngine:
     def perform_search(self, query, max_leads=200, target_country="المغرب", status_callback=None, progress_callback=None):
         results = []
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
+            # 💡 تحديد مسار الكروميوم بوضوح تام لمنع البحث في غياب ملفات الـ Cache الافتراضية
+            try:
+                browser = p.chromium.launch(headless=self.headless)
+            except Exception:
+                # Fallback آمن للبحث عن المسار الثابت يدوياً إذا لزم الأمر
+                try:
+                    browser = p.chromium.launch(headless=self.headless, executable_path="./playwright-browsers/chromium-1223/chrome-headless-shell-linux64/chrome-headless-shell")
+                except Exception:
+                    browser = p.chromium.launch(headless=self.headless)
+
             context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             page = context.new_page()
             page.set_default_timeout(0)
@@ -83,7 +96,10 @@ class GoogleMapsEngine:
                 if status_callback:
                     status_callback(f"Scrolling... {current_unique} unique leads found so far (target: {max_leads})")
                 if progress_callback:
-                    progress_callback(min(40, int((current_unique / max(max_leads, 1)) * 40)))
+                    try:
+                        progress_callback(min(40, int((current_unique / max(max_leads, 1)) * 40)))
+                    except Exception:
+                        pass
 
                 # ── Stop when target is reached ─────────────────────────────
                 if current_unique >= max_leads:
@@ -101,9 +117,6 @@ class GoogleMapsEngine:
                     pass
 
                 # ── Scroll the CORRECT container: div[role='feed'] ──────────
-                # This is the left sidebar panel in Google Maps that holds
-                # all the business listings. Scrolling anything else (body,
-                # page.mouse.wheel) does NOT trigger lazy-loading in Maps.
                 try:
                     feed = page.locator("div[role='feed']")
                     if feed.count() > 0:
@@ -160,7 +173,11 @@ class GoogleMapsEngine:
             total_found = len(place_cards)
             
             for index, card in enumerate(place_cards):
-                if progress_callback: progress_callback(min(40 + int((index+1)/(total_found+1)*40), 80))
+                if progress_callback:
+                    try:
+                        progress_callback(min(40 + int((index+1)/(total_found+1)*40), 80))
+                    except Exception:
+                        pass
                 
                 if not (page and not page.is_closed() and browser.is_connected()):
                     break
@@ -245,12 +262,13 @@ class GoogleMapsEngine:
                     if wa_link_match:
                         wa_number = wa_link_match.group(1)
                     
+                    # 💡 إذا كان الرابط فارغ نرجعه نص فارغ تفادياً لـ AttributeError في app.py
                     results.append({
                         "name": name,
-                        "phone": raw_phone,
-                        "whatsapp": wa_number,
-                        "website": raw_website,
-                        "maps_url": maps_url
+                        "phone": raw_phone if raw_phone else "غير متوفر",
+                        "whatsapp": wa_number if wa_number else "غير متوفر",
+                        "website": raw_website if raw_website else "",
+                        "maps_url": maps_url if maps_url else ""
                     })
                 except Exception as e:
                     continue
